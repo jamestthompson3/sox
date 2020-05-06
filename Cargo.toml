@@ -1,0 +1,11 @@
+[package]
+name = "sox"
+version = "0.1.0"
+authors = ["Taylor Thompson <jamestthompson3@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+crossbeam-channel = "0.4.2"
+signal-hook = "0.1.14"
