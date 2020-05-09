@@ -12,6 +12,23 @@ extern crate crossbeam_channel;
 use crossbeam_channel::{bounded, Receiver};
 use signal_hook::{iterator::Signals, SIGINT};
 
+#[derive(Debug)]
+enum Actions {
+    LISTEN,
+    CAST,
+}
+
+impl std::str::FromStr for Actions {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "listen" => Ok(Actions::LISTEN),
+            "cast" => Ok(Actions::CAST),
+            _ => Err(format!("{} is not a valid action", s)),
+        }
+    }
+}
+
 struct DeleteOnDrop {
     path: PathBuf,
     listener: UnixListener,
@@ -35,10 +52,14 @@ impl Drop for DeleteOnDrop {
     }
 }
 
-fn handle_client() {
-    let mut socket = UnixStream::connect("/tmp/mysock").unwrap();
-    println!("SENDING A TEST MESSAGE");
-    socket.write_all(b"TESTING").unwrap();
+fn handle_client(job_id: String) {
+    let socket_path = format!("/tmp/sox-{}", job_id);
+    let mut socket = UnixStream::connect(socket_path).unwrap();
+    // TODO remove loop after testing
+    loop {
+        socket.write_all(b"TESTING").unwrap();
+        thread::sleep(Duration::from_secs(3));
+    }
 }
 
 fn handle_socket(socket: &mut UnixStream) {
@@ -60,9 +81,10 @@ fn signint_notifier() -> io::Result<Receiver<()>> {
     Ok(r)
 }
 
-fn socket_runner() -> io::Result<Receiver<()>> {
+fn socket_runner(job_id: String) -> io::Result<Receiver<()>> {
     let (s, r) = bounded(1);
-    let socket_path = Path::new("/tmp/mysock");
+    let socket_name = format!("/tmp/sox-{}", job_id);
+    let socket_path = Path::new(&socket_name);
     let runner = DeleteOnDrop::bind(socket_path).unwrap();
     thread::spawn(move || loop {
         if s.send(()).is_err() {
@@ -70,8 +92,7 @@ fn socket_runner() -> io::Result<Receiver<()>> {
         }
         let runner_result = runner.listener.accept();
         match runner_result {
-            Ok((mut socket, addr)) => {
-                println!("Got a client! {:?}", addr);
+            Ok((mut socket, _)) => {
                 handle_socket(&mut socket);
             }
             Err(err) => println!("Failed to connect: {:?}", err),
@@ -82,14 +103,12 @@ fn socket_runner() -> io::Result<Receiver<()>> {
 
 fn listen_for(job_id: String) {
     let interupt = signint_notifier().unwrap();
-    let runner = socket_runner().unwrap();
+    let runner = socket_runner(job_id).unwrap();
     loop {
         select! {
             recv(runner) -> _ => {
-                println!("Running job: {}",job_id);
             }
             recv(interupt) -> _ => {
-                println!("Received interupt");
                 break;
             }
         }
@@ -98,19 +117,21 @@ fn listen_for(job_id: String) {
 
 fn main() {
     let arg_list: Vec<String> = args().collect();
-    let action = &arg_list[1];
-    println!("ACTION: {}", action);
-    if action == "listen" {
-        let listener = thread::spawn(move || {
-            let job_id = &arg_list[2];
-            listen_for(job_id.to_owned());
-        });
-        listener.join().unwrap();
+    let action: Actions = arg_list[1].parse().unwrap();
+    match action {
+        Actions::LISTEN => {
+            let listener = thread::spawn(move || {
+                let job_id = &arg_list[2];
+                listen_for(job_id.to_owned());
+            });
+            listener.join().unwrap();
+        }
+        Actions::CAST => {
+            let caster = thread::spawn(move || {
+                let job_id = &arg_list[2];
+                handle_client(job_id.to_owned());
+            });
+            caster.join().unwrap();
+        }
     }
-    // Test sending data over the socket.
-    let caster = thread::spawn(|| loop {
-        handle_client();
-        thread::sleep(Duration::from_secs(3));
-    });
-    caster.join().unwrap();
 }
