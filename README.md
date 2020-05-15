@@ -8,7 +8,8 @@ TERMINAL WINDOW 1:
 [~/my_project]-[master] > sox cast -c yarn
 ...
 Running job: 18854
-
+Copied to clipboard!
+...
 
 TERMINAL WINDOW 2:
 [~/my_project]-[master] > sox listen 18854 -c yarn start-server
@@ -21,6 +22,8 @@ $ node ./src/server.js
 ```
 
 Running the `cast` command broadcasts the command, `-c` with the given job id. Running `listen` with a job id will wait until it receives a status code about the job id, and then executes the command `-c` if the job is successful.
+
+When `cast` is run, sox will copy the corresponding `listen` command to your clipboard, so you only need to paste it into the window where you want to listen and type the command you want to run after the first job exits.
 
 ## Installation
 
