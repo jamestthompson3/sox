@@ -21,3 +21,10 @@ $ node ./src/server.js
 ```
 
 Running the `cast` command broadcasts the command, `-c` with the given job id. Running `listen` with a job id will wait until it receives a status code about the job id, and then executes the command `-c` if the job is successful.
+
+## Installation
+
+Clone this repositiory and change into the directory. Then run `cargo install --path .`
+
+
+### This program does not run on Windows since it uses Unix sockets.

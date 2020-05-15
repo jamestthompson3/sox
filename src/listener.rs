@@ -24,12 +24,18 @@ fn signint_notifier() -> io::Result<Receiver<()>> {
 
 pub fn listen_for(job_id: String, cmd: String, cmd_args: Vec<String>) {
     let interupt = signint_notifier().unwrap();
+    let socket_name = format!("/tmp/sox-{}", &job_id);
     let runner = socket_runner(job_id, cmd, cmd_args).unwrap();
+    let socket_path = Path::new(&socket_name);
     loop {
         select! {
             recv(runner) -> _ => {
             }
             recv(interupt) -> _ => {
+                match std::fs::remove_file(socket_path) {
+                    Ok(_) => {}
+                    Err(_) => {}
+                };
                 break;
             }
         }
@@ -41,23 +47,31 @@ fn socket_runner(job_id: String, cmd: String, cmd_args: Vec<String>) -> io::Resu
     let socket_name = format!("/tmp/sox-{}", job_id);
     let socket_path = Path::new(&socket_name);
     let runner = DeleteOnDrop::bind(socket_path).unwrap();
-    thread::spawn(move || loop {
-        if s.send(()).is_err() {
-            break;
-        }
-        let runner_result = runner.listener.accept();
-        match runner_result {
-            Ok((mut socket, _)) => {
-                let mut msg = String::new();
-                socket.read_to_string(&mut msg).unwrap();
-                let status_code = msg.parse::<i32>().unwrap();
-                if status_code == 0 {
-                    spawn_job(cmd.to_owned(), cmd_args.to_owned());
-                } else {
-                    println!("Dependent job failed, aborting...");
-                }
+    thread::spawn(move || {
+        loop {
+            if s.send(()).is_err() {
+                break;
             }
-            Err(err) => println!("Failed to connect: {:?}", err),
+            let runner_result = runner.listener.accept();
+            match runner_result {
+                Ok((mut socket, _)) => {
+                    let mut msg = String::new();
+                    socket.read_to_string(&mut msg).unwrap();
+                    let status_code = msg.parse::<i32>().unwrap();
+                    if status_code == 0 {
+                        spawn_job(cmd.to_owned(), cmd_args.to_owned());
+                        break;
+                    } else {
+                        println!("Dependent job failed, aborting...");
+                        break;
+                    }
+                }
+                Err(err) => println!("Failed to connect: {:?}", err),
+            };
+        }
+        match std::fs::remove_file(Path::new(&socket_name)) {
+            Ok(_) => {}
+            Err(_) => {}
         };
     });
     Ok(r)
